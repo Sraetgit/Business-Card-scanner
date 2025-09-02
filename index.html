@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Card Scanner to Excel</title>
+    <title>Business Card Scanner to Excel (Batch Upload)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -29,37 +29,35 @@
     <div class="container mx-auto p-4 md:p-8 max-w-5xl">
         <header class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Business Card Scanner</h1>
-            <p class="text-md text-gray-600 mt-2">Convert business card images into an Excel-ready format.</p>
+            <p class="text-md text-gray-600 mt-2">Upload multiple business card images to convert into an Excel-ready format.</p>
         </header>
 
         <main class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <!-- Left Column: Image Upload and Form -->
             <div class="bg-white p-6 rounded-2xl shadow-lg">
-                <h2 class="text-xl font-semibold mb-4 border-b pb-2">1. Scan Your Card</h2>
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2">1. Upload & Scan Cards</h2>
                 
                 <!-- Image Upload -->
                 <div class="mb-4">
-                    <label for="cardImage" class="block text-sm font-medium text-gray-700 mb-2">Upload Business Card Image:</label>
-                    <input type="file" id="cardImage" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <label for="cardImage" class="block text-sm font-medium text-gray-700 mb-2">Upload Business Card Images:</label>
+                    <input type="file" id="cardImage" accept="image/*" multiple class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
                 </div>
 
-                <!-- Image Preview -->
-                <div id="imagePreviewContainer" class="mb-4 hidden">
-                    <img id="imagePreview" src="#" alt="Image Preview" class="max-h-60 w-full object-contain rounded-lg bg-gray-50 p-2 border"/>
-                </div>
+                <!-- File Count Message -->
+                <p id="fileCountMessage" class="text-sm text-center text-gray-600 mb-4"></p>
                 
                 <!-- Scan Button and Loader -->
                 <div class="text-center">
                     <button id="scanButton" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-300 disabled:bg-gray-400">
-                        Scan Card
+                        Scan Cards
                     </button>
                     <div id="loader" class="hidden mx-auto mt-4 loader"></div>
-                    <p id="statusMessage" class="text-sm text-gray-500 mt-2"></p>
+                    <p id="statusMessage" class="text-sm text-gray-500 mt-2 h-5"></p>
                 </div>
                 
-                <!-- Extracted Information Form -->
+                <!-- Extracted Information Form for Manual Entry/Editing -->
                 <div id="cardForm" class="mt-6 space-y-4">
-                    <h3 class="text-lg font-semibold border-b pb-2">Extracted Information</h3>
+                    <h3 class="text-lg font-semibold border-b pb-2">Manual Entry / Edit Card</h3>
                     <div>
                         <label for="clientName" class="block text-sm font-medium text-gray-700">Client Name</label>
                         <input type="text" id="clientName" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
@@ -89,11 +87,11 @@
                         <input type="text" id="country" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
                     <div class="flex space-x-4 pt-2">
-                        <button id="addToListButton" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300 disabled:bg-gray-400">
-                            Add to List
+                        <button id="addToListButton" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300">
+                            Add/Update Manually
                         </button>
                         <button id="clearFormButton" class="w-full bg-gray-200 text-gray-700 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition duration-300">
-                            Clear
+                            Clear Form
                         </button>
                     </div>
                 </div>
@@ -131,8 +129,7 @@
 
     <script>
         const cardImageInput = document.getElementById('cardImage');
-        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
-        const imagePreview = document.getElementById('imagePreview');
+        const fileCountMessage = document.getElementById('fileCountMessage');
         const scanButton = document.getElementById('scanButton');
         const loader = document.getElementById('loader');
         const statusMessage = document.getElementById('statusMessage');
@@ -154,10 +151,10 @@
 
         let scannedCards = [];
         let editingIndex = null;
-        let imageBase64 = null;
+        let selectedFiles = [];
         
         // --- Gemini API Configuration ---
-        const API_KEY = "AIzaSyAmmfDnob8DkN1s2VxDw0_JhD9rJrtk244"; // Leave empty, handled by the environment
+        const API_KEY = "AIzaSyAmmfDnob8DkN1s2VxDw0_JhD9rJrtk244"; // IMPORTANT: Add your API key here when deploying
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         
         const cardSchema = {
@@ -176,32 +173,29 @@
 
         // --- Event Listeners ---
         cardImageInput.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    imagePreview.src = e.target.result;
-                    imageBase64 = e.target.result.split(',')[1];
-                    imagePreviewContainer.classList.remove('hidden');
-                    scanButton.disabled = false;
-                };
-                reader.readAsDataURL(file);
+            selectedFiles = event.target.files;
+            if (selectedFiles.length > 0) {
+                fileCountMessage.textContent = `${selectedFiles.length} file(s) selected.`;
+                scanButton.disabled = false;
+            } else {
+                fileCountMessage.textContent = '';
+                scanButton.disabled = true;
             }
         });
 
         scanButton.addEventListener('click', async () => {
-            if (!imageBase64) {
-                statusMessage.textContent = 'Please upload an image first.';
+            if (selectedFiles.length === 0) {
+                statusMessage.textContent = 'Please upload one or more images first.';
                 return;
             }
-            await extractInformation();
+            await processBatch();
         });
         
         addToListButton.addEventListener('click', () => {
             const cardData = getFormData();
             if(!cardData.clientName && !cardData.companyName) {
                 statusMessage.textContent = "Please provide at least a name or company name.";
-                setTimeout(() => { if(statusMessage.textContent === "Please provide at least a name or company name.") statusMessage.textContent = ''; }, 3000);
+                setTimeout(() => { if(statusMessage.textContent.includes("Please provide at least")) statusMessage.textContent = ''; }, 3000);
                 return;
             }
             statusMessage.textContent = '';
@@ -211,7 +205,6 @@
             } else {
                 scannedCards.push(cardData);
             }
-            editingIndex = null;
             renderCardList();
             clearForm();
         });
@@ -221,13 +214,67 @@
         exportButton.addEventListener('click', exportToCSV);
 
         // --- Core Functions ---
+        
+        // New: Batch processing function
+        async function processBatch() {
+            setLoadingState(true);
+            const totalFiles = selectedFiles.length;
+
+            for (let i = 0; i < totalFiles; i++) {
+                const file = selectedFiles[i];
+                statusMessage.textContent = `Processing card ${i + 1} of ${totalFiles}: ${file.name}`;
+                try {
+                    const base64Data = await readFileAsBase64(file);
+                    const cardData = await extractInformation(base64Data);
+                    if (cardData) {
+                        scannedCards.push(cardData);
+                        renderCardList();
+                    } else {
+                         console.warn(`Could not extract data from ${file.name}.`);
+                    }
+                } catch (error) {
+                    console.error(`Error processing ${file.name}:`, error);
+                    // Optionally show an error message for the specific file
+                }
+            }
+
+            statusMessage.textContent = `Batch processing complete. Added ${totalFiles} cards.`;
+            setLoadingState(false);
+            cardImageInput.value = null; // Reset file input
+            fileCountMessage.textContent = '';
+            scanButton.disabled = true;
+        }
+
+        // New: Helper to read a file and return a Base64 string
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
         async function makeApiCall(payload) {
             try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                // Exponential backoff for retries
+                let response;
+                let delay = 1000;
+                for (let i = 0; i < 3; i++) {
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.ok) break;
+                    if (response.status === 429) { // Too Many Requests
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                    } else {
+                        break;
+                    }
+                }
+                
                 if (!response.ok) {
                     const errorBody = await response.text();
                     throw new Error(`API Error: ${response.status} ${response.statusText}\n${errorBody}`);
@@ -235,28 +282,13 @@
                 return await response.json();
             } catch (error) {
                 console.error("API Call failed:", error);
-                statusMessage.textContent = "An error occurred while contacting the AI service. Please try again.";
-                throw error; // Re-throw to be caught by the caller
+                throw error;
             }
         }
-
-        function clearInputFields() {
-            clientNameInput.value = '';
-            positionInput.value = '';
-            companyNameInput.value = '';
-            emailInput.value = '';
-            websiteInput.value = '';
-            socialMediaInput.value = '';
-            countryInput.value = '';
-        }
-
-        async function extractInformation() {
-            setLoadingState(true, 'Analyzing image...');
-            clearInputFields();
-            
+        
+        // Modified: Now takes base64 data and returns structured data
+        async function extractInformation(imageBase64) {
             try {
-                // Step 1: Extract raw text from the image
-                statusMessage.textContent = 'Step 1/2: Reading text from business card...';
                 const ocrPayload = {
                     contents: [{
                         parts: [
@@ -272,8 +304,6 @@
                     throw new Error('Could not extract any text from the image.');
                 }
                 
-                // Step 2: Structure the text into JSON
-                statusMessage.textContent = 'Step 2/2: Structuring the extracted data...';
                 const structuringPayload = {
                     contents: [{
                         parts: [{
@@ -290,55 +320,42 @@
                 const jsonDataText = structuredResult.candidates?.[0]?.content?.parts?.[0]?.text;
                 
                 if (jsonDataText) {
-                    const parsedData = JSON.parse(jsonDataText);
-                    populateForm(parsedData);
-                } else {
-                     throw new Error('Failed to structure the extracted text.');
+                    return JSON.parse(jsonDataText);
                 }
+                return null;
 
             } catch (error) {
                 console.error("Extraction failed:", error);
-                statusMessage.textContent = `Error: ${error.message}`;
-            } finally {
-                setLoadingState(false);
+                return null;
             }
         }
         
         function populateForm(data) {
-            clientNameInput.value = data.clientName || 'N/A';
-            positionInput.value = data.position || 'N/A';
-            companyNameInput.value = data.companyName || 'N/A';
-            emailInput.value = data.email || 'N/A';
-            websiteInput.value = data.website || 'N/A';
-            socialMediaInput.value = data.socialMedia || 'N/A';
-            countryInput.value = data.country || 'N/A';
-            addToListButton.disabled = false;
+            clientNameInput.value = data.clientName || '';
+            positionInput.value = data.position || '';
+            companyNameInput.value = data.companyName || '';
+            emailInput.value = data.email || '';
+            websiteInput.value = data.website || '';
+            socialMediaInput.value = data.socialMedia || '';
+            countryInput.value = data.country || '';
         }
 
         function getFormData() {
             return {
-                clientName: clientNameInput.value.trim(),
-                position: positionInput.value.trim(),
-                companyName: companyNameInput.value.trim(),
-                email: emailInput.value.trim(),
-                website: websiteInput.value.trim(),
-                socialMedia: socialMediaInput.value.trim(),
-                country: countryInput.value.trim(),
+                clientName: clientNameInput.value.trim() || 'N/A',
+                position: positionInput.value.trim() || 'N/A',
+                companyName: companyNameInput.value.trim() || 'N/A',
+                email: emailInput.value.trim() || 'N/A',
+                website: websiteInput.value.trim() || 'N/A',
+                socialMedia: socialMediaInput.value.trim() || 'N/A',
+                country: countryInput.value.trim() || 'N/A',
             };
         }
 
         function clearForm() {
-            clearInputFields();
-            
-            cardImageInput.value = null;
-            imagePreview.src = '#';
-            imagePreviewContainer.classList.add('hidden');
-            imageBase64 = null;
+            populateForm({}); // Pass empty object to clear all fields
             editingIndex = null;
-
-            addToListButton.textContent = 'Add to List';
-            addToListButton.disabled = true;
-            scanButton.disabled = true;
+            addToListButton.textContent = 'Add/Update Manually';
         }
 
         function renderCardList() {
@@ -370,54 +387,39 @@
             populateForm(card);
             editingIndex = index;
             addToListButton.textContent = 'Update Entry';
-            addToListButton.disabled = false;
         };
 
         window.deleteCard = (index) => {
-            // Removed confirm() to avoid popups
             scannedCards.splice(index, 1);
             renderCardList();
         };
 
         function exportToCSV() {
-            if (scannedCards.length === 0) {
-                // Button is disabled, so this is just a safeguard. No alert needed.
-                return;
-            }
+            if (scannedCards.length === 0) return;
 
             const headers = [
-                'Client Company Name', 
-                'Company in which Country', 
-                'Client Email address', 
-                'Any social media references', 
-                'Client official website', 
-                'Position', 
-                'Client Name'
+                'Client Company Name', 'Company in which Country', 'Client Email address', 
+                'Any social media references', 'Client official website', 'Position', 'Client Name'
             ];
             
             const rows = scannedCards.map(card => [
-                card.companyName,
-                card.country,
-                card.email,
-                card.socialMedia,
-                card.website,
-                card.position,
-                card.clientName
+                card.companyName, card.country, card.email, card.socialMedia,
+                card.website, card.position, card.clientName
             ]);
 
-            let csvContent = "data:text/csv;charset=utf-t8," + headers.join(",") + "\n"
-                + rows.map(e => e.map(cell => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n");
+            let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n"
+                + rows.map(e => e.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(",")).join("\n");
             
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "business_cards.csv");
+            link.setAttribute("download", "business_cards_export.csv");
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
-        function setLoadingState(isLoading, message = '') {
+        function setLoadingState(isLoading) {
             if (isLoading) {
                 loader.classList.remove('hidden');
                 scanButton.disabled = true;
@@ -427,12 +429,10 @@
                 scanButton.disabled = false;
                 scanButton.classList.remove('cursor-not-allowed');
             }
-            statusMessage.textContent = message;
         }
 
         // Initial state
         scanButton.disabled = true;
-        addToListButton.disabled = true;
         exportButton.disabled = true;
     </script>
 
